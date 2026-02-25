@@ -46,3 +46,161 @@ packages:
       configure_args:
         - "--disable-nls"
         - "--disable-werror"
+
+  - name: lz4
+    version: "1.9.4"
+    source:
+      type: apt
+      package: lz4
+    build_system: cmake
+    build_options:
+      cmake_args:
+        - "-DBUILD_SHARED_LIBS=OFF"
+
+  - name: xz-utils
+    version: "5.4.5"
+    source:
+      type: apt
+      package: xz-utils
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--disable-shared"
+
+  - name: bzip2
+    version: "1.0.8"
+    source:
+      type: apt
+      package: bzip2
+    build_system: custom
+    build_options:
+      configure_cmd: "true"
+      build_cmd: "make -j$(nproc) CC={CC} CFLAGS=\"{CFLAGS}\" libbz2.a bzip2"
+
+  - name: curl
+    version: "8.5.0"
+    source:
+      type: apt
+      package: curl
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--without-ssl"
+        - "--disable-shared"
+
+  - name: libxml2
+    version: "2.9.14"
+    source:
+      type: apt
+      package: libxml2
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--without-python"
+        - "--without-icu"
+        - "--disable-shared"
+
+  - name: sqlite3
+    version: "3.45.1"
+    source:
+      type: apt
+      package: sqlite3
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--disable-shared"
+
+  - name: libpng
+    version: "1.6.43"
+    source:
+      type: apt
+      package: libpng1.6
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--disable-shared"
+
+  - name: libgcrypt
+    version: "1.10.3"
+    source:
+      type: apt
+      package: libgcrypt20
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--disable-shared"
+        - "--disable-asm"
+
+  - name: grep
+    version: "3.11"
+    source:
+      type: apt
+      package: grep
+    build_system: autotools
+    build_options: {}
+
+  - name: sed
+    version: "4.9"
+    source:
+      type: apt
+      package: sed
+    build_system: autotools
+    build_options: {}
+
+  - name: gawk
+    version: "5.2.1"
+    source:
+      type: apt
+      package: gawk
+    build_system: autotools
+    build_options: {}
+
+  - name: diffutils
+    version: "3.10"
+    source:
+      type: apt
+      package: diffutils
+    build_system: autotools
+    build_options: {}
+
+  - name: findutils
+    version: "4.9.0"
+    source:
+      type: apt
+      package: findutils
+    build_system: autotools
+    build_options: {}
+
+  - name: tar
+    version: "1.35"
+    source:
+      type: apt
+      package: tar
+    build_system: autotools
+    build_options: {}
+
+  - name: gzip
+    version: "1.12"
+    source:
+      type: apt
+      package: gzip
+    build_system: autotools
+    build_options: {}
+
+  - name: patch
+    version: "2.7.6"
+    source:
+      type: apt
+      package: patch
+    build_system: autotools
+    build_options: {}
+
+  - name: less
+    version: "590"
+    source:
+      type: apt
+      package: less
+    build_system: autotools
+    build_options:
+      configure_args:
+        - "--with-regex=posix"

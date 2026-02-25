@@ -10,9 +10,10 @@ import yaml
 
 @dataclass
 class SourceConfig:
-    type: str  # "tarball" or "git"
-    url: str
+    type: str  # "tarball", "git", or "apt"
+    url: str | None = None
     branch: str | None = None
+    package: str | None = None  # apt source package name
 
 
 @dataclass
@@ -37,8 +38,9 @@ def load_packages(config_path: Path) -> list[PackageConfig]:
     for pkg in data["packages"]:
         source = SourceConfig(
             type=pkg["source"]["type"],
-            url=pkg["source"]["url"],
+            url=pkg["source"].get("url"),
             branch=pkg["source"].get("branch"),
+            package=pkg["source"].get("package"),
         )
         packages.append(
             PackageConfig(
