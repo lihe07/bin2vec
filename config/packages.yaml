@@ -50,18 +50,19 @@ packages:
   - name: lz4
     version: "1.9.4"
     source:
-      type: apt
-      package: lz4
+      type: tarball
+      url: "https://github.com/lz4/lz4/releases/download/v1.9.4/lz4-1.9.4.tar.gz"
     build_system: cmake
     build_options:
+      source_subdir: "build/cmake"
       cmake_args:
         - "-DBUILD_SHARED_LIBS=OFF"
 
   - name: xz-utils
     version: "5.4.5"
     source:
-      type: apt
-      package: xz-utils
+      type: tarball
+      url: "https://github.com/tukaani-project/xz/releases/download/v5.4.5/xz-5.4.5.tar.gz"
     build_system: autotools
     build_options:
       configure_args:
@@ -70,8 +71,8 @@ packages:
   - name: bzip2
     version: "1.0.8"
     source:
-      type: apt
-      package: bzip2
+      type: tarball
+      url: "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
     build_system: custom
     build_options:
       configure_cmd: "true"
@@ -80,8 +81,8 @@ packages:
   - name: curl
     version: "8.5.0"
     source:
-      type: apt
-      package: curl
+      type: tarball
+      url: "https://curl.se/download/curl-8.5.0.tar.gz"
     build_system: autotools
     build_options:
       configure_args:
@@ -91,8 +92,8 @@ packages:
   - name: libxml2
     version: "2.9.14"
     source:
-      type: apt
-      package: libxml2
+      type: tarball
+      url: "https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.14.tar.xz"
     build_system: autotools
     build_options:
       configure_args:
@@ -103,8 +104,8 @@ packages:
   - name: sqlite3
     version: "3.45.1"
     source:
-      type: apt
-      package: sqlite3
+      type: tarball
+      url: "https://www.sqlite.org/2024/sqlite-autoconf-3450100.tar.gz"
     build_system: autotools
     build_options:
       configure_args:
@@ -113,8 +114,8 @@ packages:
   - name: libpng
     version: "1.6.43"
     source:
-      type: apt
-      package: libpng1.6
+      type: tarball
+      url: "https://download.sourceforge.net/libpng/libpng-1.6.43.tar.xz"
     build_system: autotools
     build_options:
       configure_args:
@@ -123,8 +124,8 @@ packages:
   - name: libgcrypt
     version: "1.10.3"
     source:
-      type: apt
-      package: libgcrypt20
+      type: tarball
+      url: "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.10.3.tar.bz2"
     build_system: autotools
     build_options:
       configure_args:
@@ -134,72 +135,72 @@ packages:
   - name: grep
     version: "3.11"
     source:
-      type: apt
-      package: grep
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: sed
     version: "4.9"
     source:
-      type: apt
-      package: sed
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/sed/sed-4.9.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: gawk
     version: "5.2.1"
     source:
-      type: apt
-      package: gawk
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/gawk/gawk-5.2.1.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: diffutils
     version: "3.10"
     source:
-      type: apt
-      package: diffutils
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/diffutils/diffutils-3.10.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: findutils
     version: "4.9.0"
     source:
-      type: apt
-      package: findutils
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/findutils/findutils-4.9.0.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: tar
     version: "1.35"
     source:
-      type: apt
-      package: tar
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: gzip
     version: "1.12"
     source:
-      type: apt
-      package: gzip
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/gzip/gzip-1.12.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: patch
     version: "2.7.6"
     source:
-      type: apt
-      package: patch
+      type: tarball
+      url: "https://ftp.gnu.org/gnu/patch/patch-2.7.6.tar.xz"
     build_system: autotools
     build_options: {}
 
   - name: less
     version: "590"
     source:
-      type: apt
-      package: less
+      type: tarball
+      url: "https://www.greenwoodsoftware.com/less/less-590.tar.gz"
     build_system: autotools
     build_options:
       configure_args:

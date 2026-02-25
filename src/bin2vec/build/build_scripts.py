@@ -81,9 +81,11 @@ def generate_build_script(
                 f'-DCMAKE_CXX_FLAGS="{cflags}"'
             )
 
+        source_subdir = pkg.build_options.get("source_subdir", "")
+        cmake_source = f"/workspace/sources/{source_dir}/{source_subdir}".rstrip("/")
         lines += [
             "mkdir -p /workspace/build && cd /workspace/build",
-            f"cmake /workspace/sources/{source_dir} "
+            f"cmake {cmake_source} "
             f"-DCMAKE_INSTALL_PREFIX=/workspace/output "
             f"{toolchain} {cmake_args}",
             "make -j$(nproc)",
