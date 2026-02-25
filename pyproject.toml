@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bin2vec"
+version = "0.1.0"
+description = "Dataset pipeline for compiling C/C++ packages across compiler matrices and extracting function bytes"
+requires-python = ">=3.10"
+dependencies = [
+    "pyelftools>=0.31",
+    "pyyaml>=6.0",
+    "docker>=7.0",
+    "pyarrow>=15.0",
+    "click>=8.1",
+    "tqdm>=4.66",
+]
+
+[project.scripts]
+bin2vec = "bin2vec.__main__:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bin2vec"]

@@ -1,0 +1,31 @@
+compilers:
+  - family: gcc
+    versions: [12, 13, 14]
+  - family: clang
+    versions: [16, 17, 18]
+
+optimization_levels:
+  - "-O0"
+  - "-O1"
+  - "-O2"
+  - "-O3"
+  - "-Os"
+
+isas:
+  - name: x86_64
+    docker_image: bin2vec-x86_64
+    cross_prefix: ""
+    toolchain_suffix: ""
+    openssl_target: "linux-x86_64"
+
+  - name: aarch64
+    docker_image: bin2vec-aarch64
+    cross_prefix: "aarch64-linux-gnu-"
+    toolchain_suffix: ""
+    openssl_target: "linux-aarch64"
+
+  - name: mipsel
+    docker_image: bin2vec-mipsel
+    cross_prefix: "mipsel-linux-gnu-"
+    toolchain_suffix: ""
+    openssl_target: "linux-mips32"

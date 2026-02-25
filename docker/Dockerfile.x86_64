@@ -1,0 +1,25 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Add LLVM repository for multiple Clang versions
+RUN apt-get update && apt-get install -y \
+    software-properties-common wget gnupg lsb-release \
+    && wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
+    && add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" \
+    && add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" \
+    && add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" \
+    && add-apt-repository ppa:ubuntu-toolchain-r/test
+
+RUN apt-get update && apt-get install -y \
+    gcc-12 g++-12 \
+    gcc-13 g++-13 \
+    gcc-14 g++-14 \
+    clang-16 \
+    clang-17 \
+    clang-18 \
+    make cmake autoconf automake libtool pkg-config \
+    xz-utils bzip2 curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
