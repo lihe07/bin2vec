@@ -82,9 +82,11 @@ def generate_build_script(
             )
 
         source_subdir = pkg.build_options.get("source_subdir", "")
-        cmake_source = f"/workspace/sources/{source_dir}/{source_subdir}".rstrip("/")
+        cmake_source = f"/workspace/build/src/{source_subdir}".rstrip("/")
         lines += [
-            "mkdir -p /workspace/build && cd /workspace/build",
+            # Copy sources to writable location (some cmake projects modify the source tree)
+            f"cp -a /workspace/sources/{source_dir} /workspace/build/src",
+            "mkdir -p /workspace/build/out && cd /workspace/build/out",
             f"cmake {cmake_source} "
             f"-DCMAKE_INSTALL_PREFIX=/workspace/output "
             f"{toolchain} {cmake_args}",
