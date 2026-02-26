@@ -15,8 +15,25 @@ log = get_logger("docker")
 class DockerRunner:
     """Manages Docker container lifecycle for compilation builds."""
 
+    LABEL = "bin2vec.build"
+
     def __init__(self) -> None:
         self.client = docker.from_env()
+        self._cleanup_stale_containers()
+
+    def _cleanup_stale_containers(self) -> None:
+        """Remove any stopped containers from previous runs."""
+        stale = self.client.containers.list(
+            all=True,
+            filters={"label": self.LABEL, "status": "exited"},
+        )
+        if stale:
+            log.info("Cleaning up %d stale build containers", len(stale))
+            for c in stale:
+                try:
+                    c.remove(force=True)
+                except Exception:
+                    pass
 
     def ensure_image(self, image_name: str, dockerfile_dir: Path, isa: str) -> None:
         """Build Docker image if it doesn't already exist."""
@@ -56,7 +73,7 @@ class DockerRunner:
             tmpfs={"/workspace/build": ""},
             detach=True,
             mem_limit="4g",
-            # Remove container after we collect logs
+            labels={self.LABEL: "1"},
         )
 
         try:
@@ -70,7 +87,10 @@ class DockerRunner:
 
             return True, logs
         finally:
-            container.remove(force=True)
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
 
     def close(self) -> None:
         self.client.close()
