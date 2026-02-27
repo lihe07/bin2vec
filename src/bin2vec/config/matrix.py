@@ -12,9 +12,17 @@ import yaml
 @dataclass
 class ISAConfig:
     name: str
-    docker_image: str
-    cross_prefix: str
-    openssl_target: str
+    chost: str  # Gentoo target triplet, e.g. "aarch64-unknown-linux-gnu"
+
+    @property
+    def is_native(self) -> bool:
+        return self.name == "x86_64"
+
+    @property
+    def emerge_cmd(self) -> str:
+        if self.is_native:
+            return "emerge"
+        return f"{self.chost}-emerge"
 
 
 @dataclass
@@ -30,36 +38,37 @@ class CompilationConfig:
 
     @property
     def cc(self) -> str:
-        prefix = self.isa.cross_prefix
         if self.compiler_family == "gcc":
-            return f"{prefix}gcc-{self.compiler_version}"
+            if self.isa.is_native:
+                return f"gcc-{self.compiler_version}"
+            return f"{self.isa.chost}-gcc-{self.compiler_version}"
         else:
-            return f"clang-{self.compiler_version}"
+            # Clang is inherently a cross-compiler
+            cc = f"clang-{self.compiler_version}"
+            if not self.isa.is_native:
+                cc += f" --target={self.isa.chost} --sysroot=/usr/{self.isa.chost}"
+            return cc
 
     @property
     def cxx(self) -> str:
-        prefix = self.isa.cross_prefix
         if self.compiler_family == "gcc":
-            return f"{prefix}g++-{self.compiler_version}"
+            if self.isa.is_native:
+                return f"g++-{self.compiler_version}"
+            return f"{self.isa.chost}-g++-{self.compiler_version}"
         else:
-            return f"clang++-{self.compiler_version}"
+            cxx = f"clang++-{self.compiler_version}"
+            if not self.isa.is_native:
+                cxx += f" --target={self.isa.chost} --sysroot=/usr/{self.isa.chost}"
+            return cxx
 
     @property
     def cflags(self) -> str:
-        flags = f"{self.opt_level} -g"
-        if self.compiler_family == "clang" and self.isa.cross_prefix:
-            target_map = {
-                "aarch64-linux-gnu-": "aarch64-linux-gnu",
-                "mipsel-linux-gnu-": "mipsel-linux-gnu",
-            }
-            target = target_map.get(self.isa.cross_prefix, "")
-            if target:
-                flags += f" --target={target} --sysroot=/usr/{target}"
-        return flags
+        return f"{self.opt_level} -g"
 
     @property
-    def cross_prefix(self) -> str:
-        return self.isa.cross_prefix
+    def env_tag(self) -> str:
+        """Tag used for /etc/portage/env/ file naming."""
+        return self.config_tag
 
 
 def load_matrix(config_path: Path) -> list[CompilationConfig]:
@@ -68,12 +77,7 @@ def load_matrix(config_path: Path) -> list[CompilationConfig]:
         data = yaml.safe_load(f)
 
     isas = [
-        ISAConfig(
-            name=isa["name"],
-            docker_image=isa["docker_image"],
-            cross_prefix=isa["cross_prefix"],
-            openssl_target=isa["openssl_target"],
-        )
+        ISAConfig(name=isa["name"], chost=isa["chost"])
         for isa in data["isas"]
     ]
 

@@ -21,11 +21,11 @@ def builds_dir(
     pkg: PackageConfig,
     config: CompilationConfig,
 ) -> Path:
-    return data_root(data_dir) / "builds" / pkg.name / pkg.version / config.config_tag
+    return data_root(data_dir) / "builds" / pkg.category / pkg.name / pkg.version / config.config_tag
 
 
 def extracted_dir(data_dir: str, pkg: PackageConfig) -> Path:
-    return data_root(data_dir) / "extracted" / pkg.name / pkg.version
+    return data_root(data_dir) / "extracted" / pkg.category / pkg.name / pkg.version
 
 
 def extracted_parquet(

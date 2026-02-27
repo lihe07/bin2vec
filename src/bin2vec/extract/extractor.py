@@ -20,6 +20,7 @@ log = get_logger("extractor")
 SCHEMA = pa.schema([
     ("function_name", pa.string()),
     ("source_file", pa.string()),
+    ("package_category", pa.string()),
     ("package_name", pa.string()),
     ("package_version", pa.string()),
     ("compiler_family", pa.string()),
@@ -89,6 +90,7 @@ def extract_config(
             rows.append({
                 "function_name": func.name,
                 "source_file": func.source_file,
+                "package_category": pkg.category,
                 "package_name": pkg.name,
                 "package_version": pkg.version,
                 "compiler_family": config.compiler_family,

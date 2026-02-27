@@ -1,153 +1,130 @@
-"""Parallel build orchestrator for (package × config) builds."""
+"""Parallel build orchestrator using Gentoo Portage."""
 
 from __future__ import annotations
 
-import shutil
-import tarfile
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from tqdm import tqdm
 
-from bin2vec.build.build_scripts import generate_build_script
 from bin2vec.build.docker_runner import DockerRunner
+from bin2vec.build.gentoo import build_package, discover_packages, install_deps
 from bin2vec.config.matrix import CompilationConfig
 from bin2vec.config.packages import PackageConfig
 from bin2vec.utils.logging import get_logger
-from bin2vec.utils.paths import builds_dir, sources_dir
+from bin2vec.utils.paths import builds_dir
 
 log = get_logger("orchestrator")
 
 
-def _detect_container_runtime() -> str:
-    """Return 'podman' if available, else 'docker'."""
-    for rt in ("podman", "docker"):
-        if shutil.which(rt):
-            return rt
-    raise RuntimeError("No container runtime found (podman or docker)")
-
-
-def download_source(pkg: PackageConfig, data_dir: str) -> Path:
-    """Download and extract source tarball (idempotent)."""
-    src_dir = sources_dir(data_dir)
-    src_dir.mkdir(parents=True, exist_ok=True)
-
-    extracted = src_dir / pkg.source_dir_name
-    if extracted.exists():
-        log.debug("Source already exists: %s", extracted)
-        return extracted
-
-    url = pkg.source.url
-    if not url:
-        raise ValueError(f"Package {pkg.name} has source type '{pkg.source.type}' but no URL")
-    filename = url.split("/")[-1]
-    tarball_path = src_dir / filename
-
-    if not tarball_path.exists():
-        log.info("Downloading %s", url)
-        urllib.request.urlretrieve(url, tarball_path)
-
-    log.info("Extracting %s", tarball_path)
-    with tarfile.open(tarball_path) as tf:
-        tf.extractall(path=src_dir)
-
-    if not extracted.exists():
-        # Some tarballs have different top-level dir names; find it
-        members = []
-        with tarfile.open(tarball_path) as tf:
-            members = tf.getnames()
-        if members:
-            top = members[0].split("/")[0]
-            actual = src_dir / top
-            if actual.exists() and actual != extracted:
-                actual.rename(extracted)
-
-    return extracted
-
-
-def _run_single_build(
+def _build_single(
+    runner: DockerRunner,
+    container_id: str,
     pkg: PackageConfig,
     config: CompilationConfig,
     data_dir: str,
-    docker_runner: DockerRunner,
-    docker_dir: Path,
 ) -> tuple[str, bool]:
-    """Run a single build. Returns (config_tag, success)."""
+    """Build a single (package, config) combination. Returns (config_tag, success)."""
     tag = config.config_tag
     out_dir = builds_dir(data_dir, pkg, config)
 
-    # Resume support: skip if output already has files
+    # Resume: skip if output already has files
     if out_dir.exists() and any(out_dir.iterdir()):
-        log.debug("Skipping existing build: %s/%s", pkg.name, tag)
+        log.debug("Skipping existing build: %s/%s", pkg.cp, tag)
         return tag, True
 
-    src_path = sources_dir(data_dir)
-    script = generate_build_script(
-        pkg, config,
-        source_dir=pkg.source_dir_name,
-        output_dir=str(out_dir),
-    )
+    # Build via Portage with ROOT pointing to the output inside the container
+    output_root = f"/workspace/output/{pkg.category}/{pkg.name}/{pkg.version}"
+    success = build_package(runner, container_id, pkg, config, output_root)
 
-    docker_runner.ensure_image(config.isa.docker_image, docker_dir, config.isa.name)
-
-    success, logs = docker_runner.run_build(
-        image_name=config.isa.docker_image,
-        build_script=script,
-        sources_path=src_path,
-        output_path=out_dir,
-    )
+    if success:
+        # Copy built files from container to host
+        container_out = f"{output_root}/{tag}"
+        runner.copy_from_container(container_id, container_out, out_dir)
 
     if not success:
-        log.error("FAILED: %s / %s", pkg.name, tag)
-        # Write build log for debugging
-        log_file = out_dir / "build.log"
-        log_file.write_text(logs)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        log.error("FAILED: %s / %s", pkg.cp, tag)
 
     return tag, success
 
 
 def run_builds(
-    packages: list[PackageConfig],
+    categories: list[str],
     configs: list[CompilationConfig],
     data_dir: str,
     docker_dir: Path,
     max_workers: int = 4,
 ) -> dict[str, list[str]]:
-    """Run all builds in parallel. Returns {pkg_name: [failed_tags]}."""
-    # Download all sources first
-    for pkg in packages:
-        download_source(pkg, data_dir)
+    """Run all builds using a long-lived Gentoo container.
 
+    Returns {pkg_name: [failed_tags]}.
+    """
     runner = DockerRunner()
-    failures: dict[str, list[str]] = {pkg.name: [] for pkg in packages}
+    runner.ensure_image(docker_dir)
 
-    tasks = [(pkg, config) for pkg in packages for config in configs]
-    total = len(tasks)
+    output_path = Path(data_dir).resolve() / "builds"
+    output_path.mkdir(parents=True, exist_ok=True)
 
-    log.info("Starting %d builds (%d packages × %d configs)", total, len(packages), len(configs))
+    container_id = runner.start_container(output_path)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {
-            pool.submit(_run_single_build, pkg, config, data_dir, runner, docker_dir): (pkg, config)
-            for pkg, config in tasks
-        }
+    try:
+        # Discover packages from categories inside the container
+        packages = discover_packages(categories, runner, container_id)
+        if not packages:
+            log.error("No packages discovered, aborting")
+            return {}
 
-        with tqdm(total=total, desc="Building", unit="build") as pbar:
-            for future in as_completed(futures):
-                pkg, config = futures[future]
-                try:
-                    tag, success = future.result()
-                    if not success:
-                        failures[pkg.name].append(tag)
-                except Exception as e:
-                    log.error("Build exception for %s/%s: %s", pkg.name, config.config_tag, e)
-                    failures[pkg.name].append(config.config_tag)
-                pbar.update(1)
+        log.info("Discovered %d packages", len(packages))
 
-    runner.close()
+        # Collect unique ISAs from configs
+        seen_isas = {}
+        for config in configs:
+            seen_isas[config.isa.name] = config.isa
 
-    failed_count = sum(len(v) for v in failures.values())
-    log.info("Builds complete: %d/%d succeeded", total - failed_count, total)
+        # Install build deps once per package per ISA
+        for pkg in packages:
+            for isa in seen_isas.values():
+                install_deps(runner, container_id, pkg, isa)
 
-    return failures
+        failures: dict[str, list[str]] = {pkg.name: [] for pkg in packages}
+        tasks = [(pkg, config) for pkg in packages for config in configs]
+        total = len(tasks)
+
+        log.info(
+            "Starting %d builds (%d packages x %d configs)",
+            total, len(packages), len(configs),
+        )
+
+        # Parallel builds across packages (ThreadPoolExecutor)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(
+                    _build_single, runner, container_id, pkg, config, data_dir
+                ): (pkg, config)
+                for pkg, config in tasks
+            }
+
+            with tqdm(total=total, desc="Building", unit="build") as pbar:
+                for future in as_completed(futures):
+                    pkg, config = futures[future]
+                    try:
+                        tag, success = future.result()
+                        if not success:
+                            failures[pkg.name].append(tag)
+                    except Exception as e:
+                        log.error(
+                            "Build exception for %s/%s: %s",
+                            pkg.cp, config.config_tag, e,
+                        )
+                        failures[pkg.name].append(config.config_tag)
+                    pbar.update(1)
+
+        failed_count = sum(len(v) for v in failures.values())
+        log.info("Builds complete: %d/%d succeeded", total - failed_count, total)
+
+        return failures
+
+    finally:
+        runner.stop_container(container_id)
+        runner.close()

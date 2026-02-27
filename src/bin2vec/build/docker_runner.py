@@ -1,4 +1,4 @@
-"""Docker container lifecycle management for builds."""
+"""Docker container lifecycle management for Gentoo builds."""
 
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ from bin2vec.utils.logging import get_logger
 
 log = get_logger("docker")
 
+IMAGE_NAME = "bin2vec-gentoo"
+
 
 class DockerRunner:
-    """Manages Docker container lifecycle for compilation builds."""
+    """Manages a long-lived Gentoo container for compilation builds."""
 
     LABEL = "bin2vec.build"
 
@@ -35,62 +37,92 @@ class DockerRunner:
                 except Exception:
                     pass
 
-    def ensure_image(self, image_name: str, dockerfile_dir: Path, isa: str) -> None:
-        """Build Docker image if it doesn't already exist."""
+    def ensure_image(self, dockerfile_dir: Path) -> None:
+        """Build the Gentoo Docker image if it doesn't already exist."""
         try:
-            self.client.images.get(image_name)
-            log.debug("Image %s already exists", image_name)
+            self.client.images.get(IMAGE_NAME)
+            log.debug("Image %s already exists", IMAGE_NAME)
         except ImageNotFound:
-            log.info("Building Docker image %s from %s", image_name, dockerfile_dir)
+            log.info("Building Docker image %s from %s", IMAGE_NAME, dockerfile_dir)
             self.client.images.build(
                 path=str(dockerfile_dir),
-                dockerfile=f"Dockerfile.{isa}",
-                tag=image_name,
+                dockerfile="Dockerfile",
+                tag=IMAGE_NAME,
                 rm=True,
             )
-            log.info("Image %s built successfully", image_name)
+            log.info("Image %s built successfully", IMAGE_NAME)
 
-    def run_build(
-        self,
-        image_name: str,
-        build_script: str,
-        sources_path: Path,
-        output_path: Path,
-    ) -> tuple[bool, str]:
-        """Run a build script inside a Docker container.
-
-        Returns (success, log_output).
-        """
+    def start_container(self, output_path: Path) -> str:
+        """Start a long-lived Gentoo container. Returns the container ID."""
         output_path.mkdir(parents=True, exist_ok=True)
 
         container = self.client.containers.run(
-            image=image_name,
-            command=["bash", "-c", build_script],
+            image=IMAGE_NAME,
+            command=["sleep", "infinity"],
             volumes={
-                str(sources_path): {"bind": "/workspace/sources", "mode": "ro"},
                 str(output_path): {"bind": "/workspace/output", "mode": "rw"},
             },
-            tmpfs={"/workspace/build": ""},
             detach=True,
-            mem_limit="4g",
+            mem_limit="8g",
             labels={self.LABEL: "1"},
+            privileged=False,
         )
 
+        log.info("Started build container: %s", container.short_id)
+        return container.id
+
+    def exec_in_container(
+        self,
+        container_id: str,
+        command: list[str],
+        timeout: int = 600,
+    ) -> tuple[int, str]:
+        """Execute a command inside the running container.
+
+        Returns (exit_code, output).
+        """
+        container = self.client.containers.get(container_id)
+        exec_result = container.exec_run(
+            command,
+            demux=False,
+        )
+        output = exec_result.output.decode("utf-8", errors="replace") if exec_result.output else ""
+        return exec_result.exit_code, output
+
+    def stop_container(self, container_id: str) -> None:
+        """Stop and remove the build container."""
         try:
-            result = container.wait(timeout=1800)  # 30 min timeout
-            logs = container.logs().decode("utf-8", errors="replace")
-            exit_code = result["StatusCode"]
+            container = self.client.containers.get(container_id)
+            container.stop(timeout=10)
+            container.remove(force=True)
+            log.info("Stopped container: %s", container_id[:12])
+        except Exception as e:
+            log.warning("Failed to stop container %s: %s", container_id[:12], e)
 
-            if exit_code != 0:
-                log.warning("Build failed (exit %d): %s", exit_code, logs[-500:])
-                return False, logs
+    def copy_from_container(
+        self,
+        container_id: str,
+        src_path: str,
+        dst_path: Path,
+    ) -> bool:
+        """Copy files from the container to the host."""
+        import tarfile
+        import io
 
-            return True, logs
-        finally:
-            try:
-                container.remove(force=True)
-            except Exception:
-                pass
+        container = self.client.containers.get(container_id)
+        try:
+            bits, _ = container.get_archive(src_path)
+            dst_path.mkdir(parents=True, exist_ok=True)
+            stream = io.BytesIO()
+            for chunk in bits:
+                stream.write(chunk)
+            stream.seek(0)
+            with tarfile.open(fileobj=stream) as tar:
+                tar.extractall(path=dst_path)
+            return True
+        except Exception as e:
+            log.warning("Failed to copy %s from container: %s", src_path, e)
+            return False
 
     def close(self) -> None:
         self.client.close()

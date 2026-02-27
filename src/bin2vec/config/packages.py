@@ -1,54 +1,28 @@
-"""Package configuration dataclasses and YAML loader."""
+"""Gentoo package discovery and configuration."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 
 @dataclass
-class SourceConfig:
-    type: str  # "tarball", "git", or "apt"
-    url: str | None = None
-    branch: str | None = None
-    package: str | None = None  # apt source package name
-
-
-@dataclass
 class PackageConfig:
     name: str
+    category: str
     version: str
-    source: SourceConfig
-    build_system: str  # "autotools", "cmake", "custom"
-    build_options: dict = field(default_factory=dict)
+    atom: str  # e.g. "dev-libs/openssl-3.3.1"
 
     @property
-    def source_dir_name(self) -> str:
-        return f"{self.name}-{self.version}"
+    def cp(self) -> str:
+        """Category/package atom without version (e.g. 'dev-libs/openssl')."""
+        return f"{self.category}/{self.name}"
 
 
-def load_packages(config_path: Path) -> list[PackageConfig]:
-    """Load package configs from YAML file."""
+def load_categories(config_path: Path) -> list[str]:
+    """Load category list from YAML file."""
     with open(config_path) as f:
         data = yaml.safe_load(f)
-
-    packages = []
-    for pkg in data["packages"]:
-        source = SourceConfig(
-            type=pkg["source"]["type"],
-            url=pkg["source"].get("url"),
-            branch=pkg["source"].get("branch"),
-            package=pkg["source"].get("package"),
-        )
-        packages.append(
-            PackageConfig(
-                name=pkg["name"],
-                version=pkg["version"],
-                source=source,
-                build_system=pkg["build_system"],
-                build_options=pkg.get("build_options", {}),
-            )
-        )
-    return packages
+    return data["categories"]
