@@ -118,19 +118,27 @@ def extract_all(
     packages: list[PackageConfig],
     configs: list[CompilationConfig],
     data_dir: str,
+    max_workers: int | None = None,
 ) -> int:
     """Extract functions from all (pkg, config) combinations.
 
     Returns total number of functions extracted.
     """
+    import concurrent.futures
+
     total = 0
     tasks = [(pkg, config) for pkg in packages for config in configs]
 
     with tqdm(total=len(tasks), desc="Extracting", unit="config") as pbar:
-        for pkg, config in tasks:
-            count = extract_config(pkg, config, data_dir)
-            total += count
-            pbar.update(1)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(extract_config, pkg, config, data_dir)
+                for pkg, config in tasks
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                count = future.result()
+                total += count
+                pbar.update(1)
 
     log.info("Total functions extracted: %d", total)
     return total

@@ -18,6 +18,7 @@ from bin2vec.utils.logging import setup_logging
 @click.option("--opt-level", "opt_levels", multiple=True, help="Optimization levels")
 @click.option("--packages-config", default="config/packages.yaml", help="Path to packages YAML")
 @click.option("--matrix-config", default="config/compiler_matrix.yaml", help="Path to matrix YAML")
+@click.option("--workers", type=int, default=None, help="Number of worker processes (default: all CPUs)")
 @click.option("-v", "--verbose", is_flag=True)
 @click.pass_context
 def extract(
@@ -28,6 +29,7 @@ def extract(
     opt_levels: tuple[str, ...],
     packages_config: str,
     matrix_config: str,
+    workers: int | None,
     verbose: bool,
 ) -> None:
     """Extract functions from compiled ELF binaries."""
@@ -53,5 +55,7 @@ def extract(
 
     from bin2vec.extract.extractor import extract_all
 
-    total = extract_all(packages=packages, configs=configs, data_dir=data_dir)
+    total = extract_all(
+        packages=packages, configs=configs, data_dir=data_dir, max_workers=workers
+    )
     click.echo(f"\nTotal functions extracted: {total}")
