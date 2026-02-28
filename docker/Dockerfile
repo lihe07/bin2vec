@@ -8,8 +8,8 @@ RUN emerge --sync
 # Disable sandbox features (not supported in Docker)
 RUN echo 'FEATURES="-sandbox -usersandbox -pid-sandbox -network-sandbox"' >> /etc/portage/make.conf
 
-# Enable split debug info for DWARF extraction
-RUN echo 'FEATURES="${FEATURES} splitdebug installsources"' >> /etc/portage/make.conf
+# Keep debug info in binaries (nostrip) for DWARF extraction
+RUN echo 'FEATURES="${FEATURES} nostrip"' >> /etc/portage/make.conf
 RUN echo 'CFLAGS="${CFLAGS} -g"' >> /etc/portage/make.conf
 RUN echo 'CXXFLAGS="${CXXFLAGS} -g"' >> /etc/portage/make.conf
 

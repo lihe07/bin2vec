@@ -164,7 +164,7 @@ def build_package(
         [
             "bash", "-c",
             f'ROOT="{root}" '
-            f'FEATURES="-sandbox -usersandbox -pid-sandbox -network-sandbox installsources splitdebug" '
+            f'FEATURES="-sandbox -usersandbox -pid-sandbox -network-sandbox nostrip" '
             f"{emerge_cmd} --oneshot --nodeps -q {pkg.cp}",
         ],
         timeout=1800,
