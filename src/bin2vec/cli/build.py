@@ -12,15 +12,46 @@ from bin2vec.utils.logging import setup_logging
 
 
 @click.command()
-@click.option("--categories", "category_names", multiple=True, help="Categories to build (default: all from config)")
-@click.option("--packages", "pkg_names", multiple=True, help="Package names to build (default: all discovered)")
+@click.option(
+    "--categories",
+    "category_names",
+    multiple=True,
+    help="Categories to build (default: all from config)",
+)
+@click.option(
+    "--packages",
+    "pkg_names",
+    multiple=True,
+    help="Package names to build (default: all discovered)",
+)
 @click.option("--isa", "isas", multiple=True, help="ISAs to build for (default: all)")
-@click.option("--compiler", "compilers", multiple=True, help="Compiler families (gcc, clang)")
-@click.option("--opt-level", "opt_levels", multiple=True, help="Optimization levels (e.g. -O2)")
-@click.option("--categories-config", default="config/categories.yaml", help="Path to categories YAML")
-@click.option("--matrix-config", default="config/compiler_matrix.yaml", help="Path to matrix YAML")
+@click.option(
+    "--compiler", "compilers", multiple=True, help="Compiler families (gcc, clang)"
+)
+@click.option(
+    "--opt-level", "opt_levels", multiple=True, help="Optimization levels (e.g. -O2)"
+)
+@click.option(
+    "--categories-config",
+    default="config/categories.yaml",
+    help="Path to categories YAML",
+)
+@click.option(
+    "--matrix-config", default="config/compiler_matrix.yaml", help="Path to matrix YAML"
+)
 @click.option("--docker-dir", default="docker", help="Directory containing Dockerfile")
 @click.option("--workers", default=4, help="Max parallel builds")
+@click.option(
+    "--binpkg-dir",
+    default=None,
+    help=(
+        "Host directory used as the Portage binary package cache (PKGDIR). "
+        "Mounted into the container at /var/cache/binpkgs. "
+        "Already-compiled packages are reused as .gpkg files; new packages are "
+        "written there so future runs skip recompilation. "
+        "Defaults to <data-dir>/binpkgs."
+    ),
+)
 @click.option("-v", "--verbose", is_flag=True)
 @click.pass_context
 def build(
@@ -34,9 +65,15 @@ def build(
     matrix_config: str,
     docker_dir: str,
     workers: int,
+    binpkg_dir: str | None,
     verbose: bool,
 ) -> None:
-    """Build packages across the compilation matrix using Gentoo Portage."""
+    """Build packages across the compilation matrix using Gentoo Portage.
+
+    Binary packages are cached in --binpkg-dir (default: data/binpkgs) so
+    that packages already compiled on a previous run are restored from their
+    .gpkg files in seconds instead of being recompiled from source.
+    """
     setup_logging(verbose)
     data_dir = ctx.obj["data_dir"]
 
@@ -62,6 +99,7 @@ def build(
         data_dir=data_dir,
         docker_dir=Path(docker_dir),
         max_workers=workers,
+        binpkg_dir=Path(binpkg_dir) if binpkg_dir else None,
     )
 
     total_failed = sum(len(v) for v in failures.values())

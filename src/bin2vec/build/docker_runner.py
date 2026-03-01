@@ -13,6 +13,10 @@ log = get_logger("docker")
 
 IMAGE_NAME = "bin2vec-gentoo"
 
+# Path inside every build container where Portage stores binary packages.
+# This must match PKGDIR in the Dockerfile's make.conf.
+CONTAINER_PKGDIR = "/var/cache/binpkgs"
+
 
 class DockerRunner:
     """Manages a long-lived Gentoo container for compilation builds."""
@@ -52,16 +56,45 @@ class DockerRunner:
             )
             log.info("Image %s built successfully", IMAGE_NAME)
 
-    def start_container(self, output_path: Path) -> str:
-        """Start a long-lived Gentoo container. Returns the container ID."""
+    def start_container(
+        self,
+        output_path: Path,
+        binpkg_dir: Path | None = None,
+    ) -> str:
+        """Start a long-lived Gentoo container. Returns the container ID.
+
+        Args:
+            output_path: Host path to mount as ``/workspace/output`` (build
+                         artefacts – ELF binaries).
+            binpkg_dir:  Host path to mount as ``/var/cache/binpkgs`` (binary
+                         package cache).  When supplied, Portage reuses
+                         already-compiled ``.gpkg`` files from here and writes
+                         new ones back, making subsequent runs much faster.
+                         If *None*, no cache volume is mounted (packages are
+                         always compiled from source).
+        """
         output_path.mkdir(parents=True, exist_ok=True)
+
+        volumes: dict[str, dict] = {
+            str(output_path): {"bind": "/workspace/output", "mode": "rw"},
+        }
+
+        if binpkg_dir is not None:
+            binpkg_dir.mkdir(parents=True, exist_ok=True)
+            volumes[str(binpkg_dir)] = {
+                "bind": CONTAINER_PKGDIR,
+                "mode": "rw",
+            }
+            log.info("Binpkg cache mounted: %s → %s", binpkg_dir, CONTAINER_PKGDIR)
+        else:
+            log.debug(
+                "No binpkg cache mounted; all packages will be compiled from source"
+            )
 
         container = self.client.containers.run(
             image=IMAGE_NAME,
             command=["sleep", "infinity"],
-            volumes={
-                str(output_path): {"bind": "/workspace/output", "mode": "rw"},
-            },
+            volumes=volumes,
             detach=True,
             mem_limit="8g",
             labels={self.LABEL: "1"},
@@ -69,6 +102,7 @@ class DockerRunner:
         )
 
         log.info("Started build container: %s", container.short_id)
+        assert container.id is not None, "Docker SDK returned a container with no ID"
         return container.id
 
     def exec_in_container(
@@ -86,7 +120,11 @@ class DockerRunner:
             command,
             demux=False,
         )
-        output = exec_result.output.decode("utf-8", errors="replace") if exec_result.output else ""
+        output = (
+            exec_result.output.decode("utf-8", errors="replace")
+            if exec_result.output
+            else ""
+        )
         return exec_result.exit_code, output
 
     def stop_container(self, container_id: str) -> None:

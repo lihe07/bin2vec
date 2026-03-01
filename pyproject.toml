@@ -14,6 +14,10 @@ dependencies = [
     "pyarrow>=15.0",
     "click>=8.1",
     "tqdm>=4.66",
+    # ML stack
+    "torch>=2.2",
+    "torch-geometric>=2.5",
+    "capstone>=5.0",
 ]
 
 [project.scripts]

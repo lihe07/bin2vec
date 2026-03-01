@@ -4,16 +4,30 @@ from __future__ import annotations
 
 import re
 
+from bin2vec.build.docker_runner import DockerRunner
 from bin2vec.config.matrix import CompilationConfig, ISAConfig
 from bin2vec.config.packages import PackageConfig
 from bin2vec.utils.logging import get_logger
 
 log = get_logger("gentoo")
 
+# ---------------------------------------------------------------------------
+# Portage binary-package flags
+# ---------------------------------------------------------------------------
+# buildpkg  – write a .gpkg binary package for every package emerged so it can
+#             be reused on future runs without recompiling.
+# getbinpkg – prefer installing from a pre-built .gpkg when one exists in
+#             PKGDIR (mounted from the host via docker_runner).
+#
+# These flags are appended to FEATURES for every emerge invocation so that
+# the cache is populated/consumed consistently across install_deps and
+# build_package calls.
+_BINPKG_FEATURES = "buildpkg getbinpkg binpkg-multi-instance"
+
 
 def discover_packages(
     categories: list[str],
-    runner: object,
+    runner: DockerRunner,
     container_id: str,
 ) -> list[PackageConfig]:
     """Discover available packages in given categories from the portage tree.
@@ -47,7 +61,11 @@ def discover_packages(
             # Find the latest ebuild version
             exit_code, output = runner.exec_in_container(
                 container_id,
-                ["bash", "-c", f"ls /var/db/repos/gentoo/{category}/{pkg_name}/*.ebuild 2>/dev/null | sort -V | tail -1"],
+                [
+                    "bash",
+                    "-c",
+                    f"ls /var/db/repos/gentoo/{category}/{pkg_name}/*.ebuild 2>/dev/null | sort -V | tail -1",
+                ],
             )
             if exit_code != 0 or not output.strip():
                 log.debug("No ebuilds found for %s/%s", category, pkg_name)
@@ -65,19 +83,23 @@ def discover_packages(
             version = match.group(1)
             atom = f"{category}/{pkg_name}-{version}"
 
-            packages.append(PackageConfig(
-                name=pkg_name,
-                category=category,
-                version=version,
-                atom=atom,
-            ))
+            packages.append(
+                PackageConfig(
+                    name=pkg_name,
+                    category=category,
+                    version=version,
+                    atom=atom,
+                )
+            )
 
-    log.info("Discovered %d packages across %d categories", len(packages), len(categories))
+    log.info(
+        "Discovered %d packages across %d categories", len(packages), len(categories)
+    )
     return packages
 
 
 def write_env_file(
-    runner: object,
+    runner: DockerRunner,
     container_id: str,
     config: CompilationConfig,
 ) -> str:
@@ -99,14 +121,18 @@ def write_env_file(
     )
     runner.exec_in_container(
         container_id,
-        ["bash", "-c", f"cat > /etc/portage/env/{env_name} << 'ENVEOF'\n{env_content}ENVEOF"],
+        [
+            "bash",
+            "-c",
+            f"cat > /etc/portage/env/{env_name} << 'ENVEOF'\n{env_content}ENVEOF",
+        ],
     )
 
     return env_name
 
 
 def write_package_env(
-    runner: object,
+    runner: DockerRunner,
     container_id: str,
     pkg: PackageConfig,
     env_name: str,
@@ -120,28 +146,42 @@ def write_package_env(
 
 
 def install_deps(
-    runner: object,
+    runner: DockerRunner,
     container_id: str,
     pkg: PackageConfig,
     isa: ISAConfig,
 ) -> bool:
-    """Install build dependencies for a package (once per package per ISA)."""
+    """Install build dependencies for a package (once per package per ISA).
+
+    Dependencies are installed with ``buildpkg`` + ``getbinpkg`` so that:
+    * Any dep compiled for the first time is cached as a .gpkg in PKGDIR.
+    * On subsequent runs (or for packages that share deps) the .gpkg is
+      installed directly without recompilation.
+    """
     emerge_cmd = isa.emerge_cmd
     log.info("Installing deps for %s (%s)", pkg.cp, isa.name)
 
     exit_code, output = runner.exec_in_container(
         container_id,
-        ["bash", "-c", f"{emerge_cmd} --onlydeps --autounmask-write=y --autounmask-continue=y -q {pkg.cp}"],
+        [
+            "bash",
+            "-c",
+            f'FEATURES="{_BINPKG_FEATURES}" '
+            f"{emerge_cmd} --onlydeps --autounmask-write=y --autounmask-continue=y "
+            f"--usepkg -q {pkg.cp}",
+        ],
         timeout=1800,
     )
     if exit_code != 0:
-        log.warning("Dep install failed for %s (%s): %s", pkg.cp, isa.name, output[-500:])
+        log.warning(
+            "Dep install failed for %s (%s): %s", pkg.cp, isa.name, output[-500:]
+        )
         return False
     return True
 
 
 def build_package(
-    runner: object,
+    runner: DockerRunner,
     container_id: str,
     pkg: PackageConfig,
     config: CompilationConfig,
@@ -150,6 +190,17 @@ def build_package(
     """Build a single package with the given compilation config.
 
     Uses emerge --oneshot --nodeps with ROOT set to the output directory.
+
+    Binary package behaviour
+    ------------------------
+    * ``buildpkg`` writes a .gpkg under PKGDIR keyed by
+      ``<category>/<name>-<ver>-<config_tag>.gpkg`` (Portage uses the env
+      tag via the CONFIG_ROOT / PORTAGE_CONFIGROOT difference to distinguish
+      slots built with different compiler flags).
+    * ``getbinpkg`` allows reuse of an existing .gpkg if the package atom,
+      USE flags, and CFLAGS hash all match.  Because each config_tag sets
+      different CFLAGS/CC, each compiler × opt-level combination produces its
+      own distinct binary package entry, so there is no cross-contamination.
     """
     env_name = write_env_file(runner, container_id, config)
     write_package_env(runner, container_id, pkg, env_name)
@@ -162,15 +213,19 @@ def build_package(
     exit_code, output = runner.exec_in_container(
         container_id,
         [
-            "bash", "-c",
+            "bash",
+            "-c",
             f'ROOT="{root}" '
-            f'FEATURES="-sandbox -usersandbox -pid-sandbox -network-sandbox nostrip" '
-            f"{emerge_cmd} --oneshot --nodeps -q {pkg.cp}",
+            f'FEATURES="-sandbox -usersandbox -pid-sandbox -network-sandbox nostrip '
+            f'{_BINPKG_FEATURES}" '
+            f"{emerge_cmd} --oneshot --nodeps --usepkg -q {pkg.cp}",
         ],
         timeout=1800,
     )
     if exit_code != 0:
-        log.error("Build failed for %s/%s: %s", pkg.cp, config.config_tag, output[-500:])
+        log.error(
+            "Build failed for %s/%s: %s", pkg.cp, config.config_tag, output[-500:]
+        )
         return False
 
     log.info("Build succeeded: %s/%s", pkg.cp, config.config_tag)

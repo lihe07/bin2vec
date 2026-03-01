@@ -55,10 +55,25 @@ def run_builds(
     data_dir: str,
     docker_dir: Path,
     max_workers: int = 4,
+    binpkg_dir: Path | None = None,
 ) -> dict[str, list[str]]:
     """Run all builds using a long-lived Gentoo container.
 
-    Returns {pkg_name: [failed_tags]}.
+    Args:
+        categories:   Portage categories to discover packages from.
+        configs:      Compilation configurations (compiler × opt-level × ISA).
+        data_dir:     Root data directory on the host.
+        docker_dir:   Directory containing the Dockerfile.
+        max_workers:  Number of parallel build threads.
+        binpkg_dir:   Host directory to use as the Portage binary package cache
+                      (``PKGDIR``).  Mounted into the container at
+                      ``/var/cache/binpkgs``.  When supplied, already-compiled
+                      packages are reused as ``.gpkg`` files and new packages
+                      are written there, dramatically speeding up repeat builds.
+                      Defaults to ``<data_dir>/binpkgs``.
+
+    Returns:
+        ``{pkg_name: [failed_tags]}``.
     """
     runner = DockerRunner()
     runner.ensure_image(docker_dir)
@@ -66,7 +81,12 @@ def run_builds(
     output_path = Path(data_dir).resolve() / "builds"
     output_path.mkdir(parents=True, exist_ok=True)
 
-    container_id = runner.start_container(output_path)
+    # Default binpkg cache location sits inside the data directory so it is
+    # naturally co-located with the rest of the pipeline outputs.
+    if binpkg_dir is None:
+        binpkg_dir = Path(data_dir).resolve() / "binpkgs"
+
+    container_id = runner.start_container(output_path, binpkg_dir=binpkg_dir)
 
     try:
         # Discover packages from categories inside the container
@@ -82,7 +102,9 @@ def run_builds(
         for config in configs:
             seen_isas[config.isa.name] = config.isa
 
-        # Install build deps once per package per ISA
+        # Install build deps once per package per ISA.
+        # With the binpkg cache mounted, deps that were already emerged on a
+        # previous run are restored in seconds from their .gpkg files.
         for pkg in packages:
             for isa in seen_isas.values():
                 install_deps(runner, container_id, pkg, isa)
@@ -93,7 +115,9 @@ def run_builds(
 
         log.info(
             "Starting %d builds (%d packages x %d configs)",
-            total, len(packages), len(configs),
+            total,
+            len(packages),
+            len(configs),
         )
 
         # Parallel builds across packages (ThreadPoolExecutor)
@@ -115,7 +139,9 @@ def run_builds(
                     except Exception as e:
                         log.error(
                             "Build exception for %s/%s: %s",
-                            pkg.cp, config.config_tag, e,
+                            pkg.cp,
+                            config.config_tag,
+                            e,
                         )
                         failures[pkg.name].append(config.config_tag)
                     pbar.update(1)
