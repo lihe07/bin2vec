@@ -6,7 +6,7 @@ FROM gentoo/stage3:latest
 RUN emerge --sync
 
 # Disable sandbox features (not supported in Docker)
-RUN echo 'FEATURES="-sandbox -usersandbox -pid-sandbox -network-sandbox"' >> /etc/portage/make.conf
+RUN echo 'FEATURES="-sandbox -usersandbox -ipc-sandbox -pid-sandbox -network-sandbox"' >> /etc/portage/make.conf
 
 # Keep debug info in binaries (nostrip) for DWARF extraction
 RUN echo 'FEATURES="${FEATURES} nostrip"' >> /etc/portage/make.conf
@@ -17,13 +17,13 @@ RUN echo 'CXXFLAGS="${CXXFLAGS} -g"' >> /etc/portage/make.conf
 RUN echo 'ACCEPT_KEYWORDS="~amd64"' >> /etc/portage/make.conf
 
 # Install multiple GCC slots
-RUN emerge -q sys-devel/gcc:13 sys-devel/gcc:14
+RUN emerge -q -k sys-devel/gcc:13 sys-devel/gcc:14
 
 # Install multiple Clang/LLVM slots
-RUN emerge -q llvm-core/clang:17 llvm-core/clang:18
+RUN emerge -q -k llvm-core/clang:17 llvm-core/clang:18
 
 # Install crossdev for cross-compilation toolchains
-RUN emerge -q sys-devel/crossdev
+RUN emerge -q -k sys-devel/crossdev
 
 # Set up crossdev overlay
 RUN mkdir -p /var/db/repos/crossdev/metadata /etc/portage/repos.conf && \
