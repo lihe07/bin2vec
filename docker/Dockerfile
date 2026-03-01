@@ -20,7 +20,7 @@ RUN echo 'ACCEPT_KEYWORDS="~amd64"' >> /etc/portage/make.conf
 RUN emerge -q sys-devel/gcc:13 sys-devel/gcc:14
 
 # Install multiple Clang/LLVM slots
-RUN emerge -q sys-devel/clang:17 sys-devel/clang:18
+RUN emerge -q llvm-core/clang:17 llvm-core/clang:18
 
 # Install crossdev for cross-compilation toolchains
 RUN emerge -q sys-devel/crossdev
